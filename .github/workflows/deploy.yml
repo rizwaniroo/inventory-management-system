@@ -1,0 +1,47 @@
+name: Deploy Laravel to EC2
+
+on:
+  push:
+    branches:
+      - main  # or your deployment branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, gd, json, zip, mysql
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Build frontend assets
+        run: |
+          npm install
+          npm run build
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_DEPLOY_KEY }}
+          port: 22
+          script: |
+            cd /var/www/inventory-management-system
+            git pull origin main
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan storage:link
+            sudo chown -R www-data:www-data /var/www/inventory-management-system
+            sudo chmod -R 775 /var/www/inventory-management-system/storage /var/www/inventory-management-system/bootstrap/cache
+            sudo systemctl restart php8.3-fpm
+            sudo systemctl restart nginx
